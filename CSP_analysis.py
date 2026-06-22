@@ -179,7 +179,7 @@ def main():
         )
     logger.info(f"Using alphas: {alphas}")
 
-    for peaklist in peaklists:
+    for peaklist, peakfile in list(zip(peaklists, peakfiles)):
         # We are comparing this peaklist to the first peaklist, which has the lowest titration value
         zipped = list(
             zip(peaklist.itertuples(index=True), peaklists[0].itertuples(index=True))
@@ -202,6 +202,8 @@ def main():
                 for rowi, rowj in zipped
             ]
         )
+        peakfile_trimmed = peakfile.split('/')[-1].split(".", 1)
+        peaklist.to_csv(f"{args.dir}/{peakfile_trimmed[0]}_CSPs.{peakfile_trimmed[1]}")
 
     # Perform autoscaling to a consistent residue's maximum CSP
     max_residue_index, max_value = get_consistent_max_residue(peaklists, logger)
@@ -284,14 +286,14 @@ def main():
                     y=perc_val,
                     color="black",
                     linestyle=ls,
-                    label=f"{perc}%     = {perc_val:0.3f}",
+                    label=f"{perc}%     = {perc_val:0.4f}",
                 )
 
             plt.axhline(
                 y=median,
                 color="black",
                 linestyle="-",
-                label=r"$\operatorname{med}(\Delta \delta)$" + f" = {median:0.3f}",
+                label=r"$\operatorname{med}(\Delta \delta)$" + f" = {median:0.4f}",
             )
 
             # plt.scatter(
