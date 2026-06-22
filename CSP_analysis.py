@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import pprint
 import sys
 from datetime import datetime
 
@@ -9,38 +10,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+import utils
+
 
 # Chemical shift perturbations, from Eq 8 of doi.org/10.1016/j.pnmrs.2013.02.001
 def CSP(w1: float, w2: float, alpha1: float, alpha2: float):
     return np.sqrt(0.5 * ((alpha1 * w1) ** 2 + (alpha2 * w2) ** 2))
-
-
-def setup_logging(no_log: bool, log: str):
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-    formatter = logging.Formatter("%(asctime)s- %(levelname)s - %(message)s")
-
-    stdout_handler = colorlog.StreamHandler(sys.stdout)
-    stdout_handler.setFormatter(
-        colorlog.ColoredFormatter(
-            "%(log_color)s%(levelname)s%(reset)s - %(message)s",
-            log_colors={
-                "DEBUG": "cyan",
-                "INFO": "green",
-                "WARNING": "orange",
-                "ERROR": "red",
-            },
-        )
-    )
-
-    logger.addHandler(stdout_handler)
-
-    if not no_log:
-        file_handler = logging.FileHandler(log)
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
-
-    return logger
 
 
 def get_consistent_max_residue(peaklists: List[pd.DataFrame], logger) -> (int, float):
@@ -102,6 +77,12 @@ def main():
         default="pdf",
         help='The file format you\'d like the plots to be given in. Valid options are "png", "svg", and "pdf".',
     )
+    parser.add_argument(
+        "--plot-percentiles",
+        type=str,
+        default="75,90",
+        help='A list of percentiles you\'d like to plot. The highest will be colored red. E.g. "75,90"',
+    )
     args = parser.parse_args()
 
     # Set up logging
@@ -110,17 +91,15 @@ def main():
     else:
         raise AssertionError(f"The analysis directory {args.dir} already exists!")
     logfile = os.path.abspath(f"{args.dir}/{args.log}")
-    logger = setup_logging(args.no_log, logfile)
+    logger = utils.setup_logging(args.no_log, logfile)
     logger.info("You ran: " + str(sys.executable) + " " + os.path.abspath(__file__))
     logger.info(f"This log file is located at {logfile}")
+    logger.info("Using the following args:\n" + pprint.pformat(vars(args)) + "\n")
 
-    # Check that the filetype is valid
-    if args.plot_format not in ("png", "svg", "pdf"):
-        logger.error(f'File format "{args.plot_format}" is invalid!')
-        raise AssertionError(f'File format "{args.plot_format}" is invalid!')
+    utils.check_args(args, logger)
 
     badresidues = [
-        badres for badres in args.bad_residues.split(",") if badres.isdigit()
+        badres.strip().strip("\"'").strip() for badres in args.bad_residues.split(",")
     ]
 
     peakfiles = []
@@ -247,6 +226,10 @@ def main():
     with open(f"{args.dir}/{args.log}", "r") as f:
         full_log = f.read()
     plt.rcParams.update({"font.size": 14})
+    plot_percentiles = [
+        float(plot_perc.strip().strip("\"'").strip())
+        for plot_perc in args.plot_percentiles.split(",")
+    ]
     for nucleus in unique_nonH_nuclei:
         for i, peaklist in enumerate(
             peaklists[1:]
@@ -258,10 +241,13 @@ def main():
             mean = np.mean(CSPs_np)
             median = np.median(CSPs_np)
             stdev = np.std(CSPs_np)
+            plot_perc_values = [np.percentile(CSPs_np, q) for q in plot_percentiles]
+            plot_perc_values.sort(reverse=True)
+            plot_percentiles.sort(reverse=True)
 
             colors = []
             for row in peaks_filtered.itertuples(index=True):
-                if row.CSP > mean + stdev:
+                if row.CSP > plot_perc_values[0]:
                     colors.append("red")
                 else:
                     colors.append("blue")
@@ -272,39 +258,57 @@ def main():
                 color=colors,
                 width=1.0,
             )
+            # plt.axhline(
+            #     y=mean,
+            #     color="black",
+            #     linestyle="-",
+            #     label=r"$\overline{\Delta \delta}$",
+            # )
+            # plt.axhline(
+            #     y=mean + stdev,
+            #     color="black",
+            #     linestyle="--",
+            #     label=r"$\overline{\Delta \delta} \pm \sigma$",
+            # )
+            # plt.axhline(
+            #     y=mean - stdev,
+            #     color="black",
+            #     linestyle="--",
+            # )
+
+            linestyles = ["dashed", "dashdot", "dotted"][: len(plot_perc_values)]
+            for perc, perc_val, ls in list(
+                zip(plot_percentiles, plot_perc_values, linestyles)
+            ):
+                plt.axhline(
+                    y=perc_val,
+                    color="black",
+                    linestyle=ls,
+                    label=f"{perc}%     = {perc_val:0.3f}",
+                )
+
             plt.axhline(
-                y=mean,
+                y=median,
                 color="black",
                 linestyle="-",
-                label=r"$\overline{\Delta \delta}$",
-            )
-            plt.axhline(
-                y=mean + stdev,
-                color="black",
-                linestyle="--",
-                label=r"$\overline{\Delta \delta} \pm \sigma$",
-            )
-            plt.axhline(
-                y=mean - stdev,
-                color="black",
-                linestyle="--",
+                label=r"$\operatorname{med}(\Delta \delta)$" + f" = {median:0.3f}",
             )
 
-            plt.scatter(
-                min(peaks_filtered.ResidueIndex.to_numpy(dtype=int)),
-                0,
-                label=" ",
-                visible=False,
-            )
-            plt.scatter(
-                min(peaks_filtered.ResidueIndex.to_numpy(dtype=int)),
-                0,
-                label=r"$\overline{\Delta \delta}$"
-                + f" = {mean:0.3f} ppm,\n"
-                + r"$\sigma$"
-                + f"   = {stdev:0.3f} ppm",
-                visible=False,
-            )
+            # plt.scatter(
+            #     min(peaks_filtered.ResidueIndex.to_numpy(dtype=int)),
+            #     0,
+            #     label=" ",
+            #     visible=False,
+            # )
+            # plt.scatter(
+            #     min(peaks_filtered.ResidueIndex.to_numpy(dtype=int)),
+            #     0,
+            #     label=r"$\overline{\Delta \delta}$"
+            #     + f" = {mean:0.3f} ppm,\n"
+            #     + r"$\sigma$"
+            #     + f"   = {stdev:0.3f} ppm",
+            #     visible=False,
+            # )
 
             # For labeling the residues on the x axis. Maybe allow as an option later.
             # plt.xticks(
