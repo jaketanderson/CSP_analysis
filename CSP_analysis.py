@@ -13,7 +13,8 @@ import pandas as pd
 import utils
 
 
-# Chemical shift perturbations, from Eq 8 of doi.org/10.1016/j.pnmrs.2013.02.001
+# Chemical shift perturbation calcs
+# Note that this is DIFFERENT from eq 8 of doi.org/10.1016/j.pnmrs.2013.02.001
 def CSP(w1: float, w2: float, alpha1: float, alpha2: float):
     return np.sqrt(0.5 * ((alpha1 * w1) ** 2 + (alpha2 * w2) ** 2))
 
@@ -82,6 +83,12 @@ def main():
         type=str,
         default="75,90",
         help='A list of percentiles you\'d like to plot. The highest will be colored red. E.g. "75,90"',
+    )
+    parser.add_argument(
+        "--scale-plots",
+        action="store_true",
+        default=False,
+        help="This flag will scale up all plots to each take up the entire y-axis. Otherwise, by default, all plots will have the same y-axis."
     )
     args = parser.parse_args()
 
@@ -206,6 +213,8 @@ def main():
         peaklist.to_csv(f"{args.dir}/{peakfile_trimmed[0]}_CSPs.{peakfile_trimmed[1]}")
 
     # Perform autoscaling to a consistent residue's maximum CSP
+    # I think this is a bad idea actually. We should just make autoscaling give each plot
+    # the same ylims
     max_residue_index, max_value = get_consistent_max_residue(peaklists, logger)
     if max_residue_index:
         while True:
@@ -222,6 +231,8 @@ def main():
             elif autoscale in ("n", "no"):
                 autoscale = False
                 break
+    else:
+        autoscale = False
 
     logger.info(f"Creating {args.plot_format.upper()}s")
     # Include the full log in the metadata of the image
@@ -232,6 +243,21 @@ def main():
         float(plot_perc.strip().strip("\"'").strip())
         for plot_perc in args.plot_percentiles.split(",")
     ]
+
+    # Choose subplot layout based on number of peaklists
+    # This is naïve, but I think it is the most readable option
+    l = len(peaklists) - 1
+    if 1 <= l <= 3:
+        r, c = (1, l)
+    elif l == 4:
+        r, c = (2, 2)
+    elif 5 <= l <= 6:
+        r, c = (2, 3)
+    else:
+        r, c = (round(l/3)+1, 3)
+    
+    bigfig, axes = plt.subplots(nrows=r, ncols=c, figsize=(18,12))
+    # Iterate over peaklists (titration percentages)
     for nucleus in unique_nonH_nuclei:
         for i, peaklist in enumerate(
             peaklists[1:]
@@ -258,25 +284,16 @@ def main():
                 peaks_filtered.ResidueIndex.to_numpy(dtype=int),
                 CSPs_np,
                 color=colors,
+                edgecolor="black",
                 width=1.0,
             )
-            # plt.axhline(
-            #     y=mean,
-            #     color="black",
-            #     linestyle="-",
-            #     label=r"$\overline{\Delta \delta}$",
-            # )
-            # plt.axhline(
-            #     y=mean + stdev,
-            #     color="black",
-            #     linestyle="--",
-            #     label=r"$\overline{\Delta \delta} \pm \sigma$",
-            # )
-            # plt.axhline(
-            #     y=mean - stdev,
-            #     color="black",
-            #     linestyle="--",
-            # )
+            axes.flat[i].bar(
+                peaks_filtered.ResidueIndex.to_numpy(dtype=int),
+                CSPs_np,
+                color=colors,
+                edgecolor="black",
+                width=1.0,
+            )
 
             linestyles = ["dashed", "dashdot", "dotted"][: len(plot_perc_values)]
             for perc, perc_val, ls in list(
@@ -288,56 +305,61 @@ def main():
                     linestyle=ls,
                     label=f"{perc}%     = {perc_val:0.4f}",
                 )
+                axes.flat[i].axhline(
+                    y=perc_val,
+                    color="black",
+                    linestyle=ls,
+                    label=f"{perc}%     = {perc_val:0.4f}",
+                )
 
             plt.axhline(
                 y=median,
                 color="black",
                 linestyle="-",
-                label=r"$\operatorname{med}(\Delta \delta)$" + f" = {median:0.4f}",
+                label=r"$\operatorname{med}(\Delta \delta)$" + f"  = {median:0.4f}",
+            )
+            axes.flat[i].axhline(
+                y=median,
+                color="black",
+                linestyle="-",
+                label=r"$\operatorname{med}(\Delta \delta)$" + f"  = {median:0.4f}",
             )
 
-            # plt.scatter(
-            #     min(peaks_filtered.ResidueIndex.to_numpy(dtype=int)),
-            #     0,
-            #     label=" ",
-            #     visible=False,
-            # )
-            # plt.scatter(
-            #     min(peaks_filtered.ResidueIndex.to_numpy(dtype=int)),
-            #     0,
-            #     label=r"$\overline{\Delta \delta}$"
-            #     + f" = {mean:0.3f} ppm,\n"
-            #     + r"$\sigma$"
-            #     + f"   = {stdev:0.3f} ppm",
-            #     visible=False,
-            # )
-
-            # For labeling the residues on the x axis. Maybe allow as an option later.
-            # plt.xticks(
-            #     peaks_filtered.ResidueIndex.to_numpy(dtype=int),
-            #     labels=peaks_filtered["Assignment"].str.split("_").str[0].tolist(),
-            #     fontsize=8,
-            #     rotation=45,
-            # )
             plt.xticks(
+                np.arange(0, max(peaks_filtered.ResidueIndex.to_numpy(dtype=int)), 5),
+            )
+            axes.flat[i].set_xticks(
                 np.arange(0, max(peaks_filtered.ResidueIndex.to_numpy(dtype=int)), 5),
             )
             plt.xlim(
                 xmin=peaks_filtered.ResidueIndex.to_numpy(dtype=int).min() - 0.5,
                 xmax=peaks_filtered.ResidueIndex.to_numpy(dtype=int).max() + 0.5,
             )
+            axes.flat[i].set_xlim(
+                xmin=peaks_filtered.ResidueIndex.to_numpy(dtype=int).min() - 0.5,
+                xmax=peaks_filtered.ResidueIndex.to_numpy(dtype=int).max() + 0.5,
+            )
             plt.xlabel("Residues")
+            axes.flat[i].set_xlabel("Residues")
             plt.ylabel(r"$\Delta \delta$" + " (ppm)")
+            axes.flat[i].set_ylabel(r"$\Delta \delta$" + " (ppm)")
 
             if autoscale:
                 plt.ylim(0, max_value)
+                axes.flat[i].set_ylim(0, max_value)
             plt.legend(framealpha=0.75)
+            axes.flat[i].legend(framealpha=0.75)
             plt.tight_layout()
 
-            plt.savefig(
+            fig.savefig(
                 f"{args.dir}/H{nucleus}_{titration_percs[i+1]}.{args.plot_format}",
                 metadata={"Title": full_log},  # Title should work across all 3 formats
             )
+            
+        bigfig.savefig(
+            f"{args.dir}/H{nucleus}.{args.plot_format}",
+            metadata={"Title": full_log},
+        )
 
 
 if __name__ == "__main__":
