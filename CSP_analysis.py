@@ -19,26 +19,12 @@ def CSP(w1: float, w2: float, alpha1: float, alpha2: float):
     return np.sqrt(0.5 * ((alpha1 * w1) ** 2 + (alpha2 * w2) ** 2))
 
 
-def get_consistent_max_residue(peaklists: List[pd.DataFrame], logger) -> (int, float):
-    max_residue_indices = []
+def get_max_CSP(peaklists: List[pd.DataFrame], logger) -> float:
     max_vals = []
     for peaklist in peaklists[1:]:
-        max_residue_indices.append(peaklist["CSP"].idxmax())
         max_vals.append(peaklist["CSP"].max())
 
-    max_residue_indices = set(max_residue_indices)
-    if len(max_residue_indices) == 1:
-        logger.info(
-            f"Residue {peaklist.loc[list(max_residue_indices)[0]]['Assignment']} (index {list(max_residue_indices)[0]}) has the maximum CSP for all titrants."
-        )
-        index = list(max_residue_indices)[0]
-        value = max(max_vals)
-        return index, value
-    else:
-        logger.info(
-            "The residue with the maximum CSP is different across the titration. No autoscaling possible"
-        )
-        return None, None
+    return max(max_vals)
 
 
 def main():
@@ -88,7 +74,7 @@ def main():
         "--scale-plots",
         action="store_true",
         default=False,
-        help="This flag will scale up all plots to each take up the entire y-axis. Otherwise, by default, all plots will have the same y-axis."
+        help="This flag will scale up all plots to each take up the entire y-axis. Otherwise, by default, all plots will have the same y-axis.",
     )
     args = parser.parse_args()
 
@@ -212,27 +198,6 @@ def main():
         peakfile_trimmed = peakfile.split('/')[-1].split(".", 1)
         peaklist.to_csv(f"{args.dir}/{peakfile_trimmed[0]}_CSPs.{peakfile_trimmed[1]}")
 
-    # Perform autoscaling to a consistent residue's maximum CSP
-    # I think this is a bad idea actually. We should just make autoscaling give each plot
-    # the same ylims
-    max_residue_index, max_value = get_consistent_max_residue(peaklists, logger)
-    if max_residue_index:
-        while True:
-            autoscale = (
-                input(
-                    "Would you like to autoscale so this residue's maximum is at the top of each plot? (y/n): "
-                )
-                .lower()
-                .strip()
-            )
-            if autoscale in ("y", "yes"):
-                autoscale = True
-                break
-            elif autoscale in ("n", "no"):
-                autoscale = False
-                break
-    else:
-        autoscale = False
 
     logger.info(f"Creating {args.plot_format.upper()}s")
     # Include the full log in the metadata of the image
@@ -243,7 +208,8 @@ def main():
         float(plot_perc.strip().strip("\"'").strip())
         for plot_perc in args.plot_percentiles.split(",")
     ]
-
+    max_CSP = get_max_CSP(peaklists, logger)
+    
     # Choose subplot layout based on number of peaklists
     # This is naïve, but I think it is the most readable option
     l = len(peaklists) - 1
@@ -256,7 +222,7 @@ def main():
     else:
         r, c = (round(l/3)+1, 3)
     
-    bigfig, axes = plt.subplots(nrows=r, ncols=c, figsize=(18,12))
+    bigfig, axes = plt.subplots(nrows=r, ncols=c, figsize=(8*r,8*c))
     # Iterate over peaklists (titration percentages)
     for nucleus in unique_nonH_nuclei:
         for i, peaklist in enumerate(
@@ -316,13 +282,13 @@ def main():
                 y=median,
                 color="black",
                 linestyle="-",
-                label=r"$\operatorname{med}(\Delta \delta)$" + f"  = {median:0.4f}",
+                label=r"$\operatorname{med}(\Delta \delta)$" + f" = {median:0.4f}",
             )
             axes.flat[i].axhline(
                 y=median,
                 color="black",
                 linestyle="-",
-                label=r"$\operatorname{med}(\Delta \delta)$" + f"  = {median:0.4f}",
+                label=r"$\operatorname{med}(\Delta \delta)$" + f" = {median:0.4f}",
             )
 
             plt.xticks(
@@ -344,11 +310,11 @@ def main():
             plt.ylabel(r"$\Delta \delta$" + " (ppm)")
             axes.flat[i].set_ylabel(r"$\Delta \delta$" + " (ppm)")
 
-            if autoscale:
-                plt.ylim(0, max_value)
-                axes.flat[i].set_ylim(0, max_value)
-            plt.legend(framealpha=0.75)
-            axes.flat[i].legend(framealpha=0.75)
+            if not args.scale_plots:
+                plt.ylim(0, max_CSP)
+                axes.flat[i].set_ylim(0, max_CSP)
+            plt.legend(framealpha=0.75, loc="upper left")
+            axes.flat[i].legend(framealpha=0.75, loc="upper left")
             plt.tight_layout()
 
             fig.savefig(
