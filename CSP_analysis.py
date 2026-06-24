@@ -230,6 +230,7 @@ def main():
         ):  # We do [1:] because first peaklist is baseline and the CSPs=0
             fig = plt.figure(figsize=(16, 9))
             plt.title(f"H{nucleus} at {titration_percs[i+1]}%")
+            axes.flat[i].set_title(f"H{nucleus} at {titration_percs[i+1]}%")
             peaks_filtered = peaklist[(peaklist["Nucleus1"] == nucleus)]
             CSPs_np = peaks_filtered.CSP.to_numpy()
             mean = np.mean(CSPs_np)
