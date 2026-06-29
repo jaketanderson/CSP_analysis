@@ -5,6 +5,14 @@ import sys
 import colorlog
 
 
+AA = {
+    "A": "ALA", "R": "ARG", "N": "ASN", "D": "ASP",
+    "C": "CYS", "Q": "GLN", "E": "GLU", "G": "GLY",
+    "H": "HIS", "I": "ILE", "L": "LEU", "K": "LYS",
+    "M": "MET", "F": "PHE", "P": "PRO", "S": "SER",
+    "T": "THR", "W": "TRP", "Y": "TYR", "V": "VAL",
+}
+
 def setup_logging(no_log: bool, log: str):
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
@@ -66,3 +74,9 @@ def check_args(args, logger) -> None:
     if len(plot_percentiles) > 3:
         logger.error(f"Plot percentile list is too long. Must be 3 or fewer.")
         raise AssertionError(f"Plot percentile list is too long. Must be 3 or fewer.")
+
+used_alpha_keys = []
+def get_alphas(alphas, key):
+    # This helper function makes it easy to track which alphas were actually used and are relevant to print
+    used_alpha_keys.append(key)
+    return alphas[key]

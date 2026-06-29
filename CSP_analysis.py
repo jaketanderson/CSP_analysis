@@ -12,6 +12,12 @@ import pandas as pd
 
 import utils
 
+# Use this dictionary to overwrite the alphas from the shift database with custom values.
+CUSTOM_ALPHAS = {
+    #"GLYHA3": 4.3333,
+}
+
+shift_db = pd.read_csv("shift_database.csv", sep=",")
 
 # Chemical shift perturbation calcs
 # Note that this is DIFFERENT from eq 8 of doi.org/10.1016/j.pnmrs.2013.02.001
@@ -156,21 +162,13 @@ def main():
         len(set([len(peaklist) for peaklist in peaklists])) == 1
     ), "The number of peaks per file is different. Each file must have the same number of peaks after bad-residue exclusion."
 
-    unique_nonH_nuclei = set(
-        [x for peaklist in peaklists for x in peaklist["Nucleus1"].to_list()]
-    )
-    unique_nonH_nuclei |= set(
-        [x for peaklist in peaklists for x in peaklist["Nucleus2"].to_list()]
-    )
-    unique_nonH_nuclei.discard("H")
-    alphas = {"H": 1.0}
-    for nucleus in unique_nonH_nuclei:
-        alphas[nucleus] = float(
-            input(
-                f"Give the alpha for scaling perturbations in {nucleus} relative to H: "
-            ).strip()
-        )
-    logger.info(f"Using alphas: {alphas}")
+    alphas = {}
+    # Use the lowest stdev from all residue/nucleus combos as the reference
+    reference = min(shift_db["std"])
+    # Populate alphas as ratios of stdev to reference
+    for row in shift_db.itertuples():
+        key = row.comp_id + row.atom_id
+        alphas[key] = row.std / reference
 
     for peaklist, peakfile in list(zip(peaklists, peakfiles)):
         # We are comparing this peaklist to the first peaklist, which has the lowest titration value
@@ -179,24 +177,29 @@ def main():
         )
         assert all(
             [
-                (rowi.Nucleus1 == rowj.Nucleus1) and (rowi.Nucleus2 == rowj.Nucleus2)
+                (rowi.ResidueIndex == rowj.ResidueIndex) and
+                (rowi.ResidueType == rowj.ResidueType) and
+                (rowi.Nucleus1 == rowj.Nucleus1) and
+                (rowi.Nucleus2 == rowj.Nucleus2)
                 for rowi, rowj in zipped
             ]
-        ), "There are peaks with mismatched nuclei from peaklist to peaklist! Please review the peaklists line-by-line and ensure they match. E.g. N-H with N-H, so on."
+        ), "There are peaks with mismatched nuclei/residues from peaklist to peaklist! Please review the peaklists line-by-line and ensure they match. E.g. N-H with N-H, so on."
 
         peaklist["CSP"] = pd.Series(
             [
                 CSP(
                     rowj.w1 - rowi.w1,
                     rowj.w2 - rowi.w2,
-                    alphas[rowi.Nucleus1],
-                    alphas[rowi.Nucleus2],
+                    utils.get_alphas(alphas, utils.AA[rowi.ResidueType]+rowi.Nucleus1),
+                    utils.get_alphas(alphas, utils.AA[rowi.ResidueType]+rowi.Nucleus2),
                 )
                 for rowi, rowj in zipped
             ]
         )
         peakfile_trimmed = peakfile.split('/')[-1].split(".", 1)
         peaklist.to_csv(f"{args.dir}/{peakfile_trimmed[0]}_CSPs.{peakfile_trimmed[1]}")
+    used_alphas = {key: round(alphas[key], 3) for key in utils.used_alpha_keys if key in alphas}
+    logger.info(f"List of alphas relevant to your residues:\n{used_alphas}")
 
 
     logger.info(f"Creating {args.plot_format.upper()}s")
@@ -223,8 +226,12 @@ def main():
         r, c = (round(l/3)+1, 3)
     
     bigfig, axes = plt.subplots(nrows=r, ncols=c, figsize=(8*r,8*c))
-    # Iterate over peaklists (titration percentages)
-    for nucleus in unique_nonH_nuclei:
+    # Iterate over nucleus types and peaklists (titration percentages)
+    # TODO: This is currently not working. We should make plots with every nucleus pairing
+    # That exists in the peaklists. Including N-H, N-HB, etc. But we should filter to ensure
+    # we only make the plot of there are at least 2 instances of those pairings. Otherwise
+    # we will get plots with only one bar!
+    for nucleus in set():
         for i, peaklist in enumerate(
             peaklists[1:]
         ):  # We do [1:] because first peaklist is baseline and the CSPs=0
