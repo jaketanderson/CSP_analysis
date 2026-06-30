@@ -197,7 +197,7 @@ def main():
             ]
         )
         peakfile_trimmed = peakfile.split('/')[-1].split(".", 1)
-        peaklist.to_csv(f"{args.dir}/{peakfile_trimmed[0]}_CSPs.{peakfile_trimmed[1]}")
+        peaklist.to_csv(f"{args.dir}/{peakfile_trimmed[0]}_CSPs.{peakfile_trimmed[1]}", index=False)
     used_alphas = {key: round(alphas[key], 3) for key in utils.used_alpha_keys if key in alphas}
     logger.info(f"List of alphas relevant to your residues:\n{used_alphas}")
 
@@ -225,20 +225,23 @@ def main():
     else:
         r, c = (round(l/3)+1, 3)
     
-    bigfig, axes = plt.subplots(nrows=r, ncols=c, figsize=(8*r,8*c))
     # Iterate over nucleus types and peaklists (titration percentages)
-    # TODO: This is currently not working. We should make plots with every nucleus pairing
-    # That exists in the peaklists. Including N-H, N-HB, etc. But we should filter to ensure
-    # we only make the plot of there are at least 2 instances of those pairings. Otherwise
-    # we will get plots with only one bar!
-    for nucleus in set():
+    nucleus_pairs = list(zip(peaklists[0]["Nucleus1"], peaklists[0]["Nucleus2"]))
+    for nucleus_pair in set(nucleus_pairs):
+        bigfig, axes = plt.subplots(nrows=r, ncols=c, figsize=(8*r,8*c))
         for i, peaklist in enumerate(
             peaklists[1:]
         ):  # We do [1:] because first peaklist is baseline and the CSPs=0
+            peaks_filtered = peaklist[
+                (peaklist["Nucleus1"] == nucleus_pair[0]) & (peaklist["Nucleus2"] == nucleus_pair[1])
+            ]
+            if len(peaks_filtered) < 2:
+                continue
             fig = plt.figure(figsize=(16, 9))
-            plt.title(f"H{nucleus} at {titration_percs[i+1]}%")
-            axes.flat[i].set_title(f"H{nucleus} at {titration_percs[i+1]}%")
-            peaks_filtered = peaklist[(peaklist["Nucleus1"] == nucleus)]
+            plt.title(f"{nucleus_pair[0]}{nucleus_pair[1]} at {titration_percs[i+1]}%")
+            if l == 1:
+                axes.flat = [axes] # This is needed because a 1x1 Axes is not a list of Axes by default
+            axes.flat[i].set_title(f"{nucleus_pair[0]}{nucleus_pair[1]} at {titration_percs[i+1]}%")
             CSPs_np = peaks_filtered.CSP.to_numpy()
             mean = np.mean(CSPs_np)
             median = np.median(CSPs_np)
@@ -326,12 +329,12 @@ def main():
             plt.tight_layout()
 
             fig.savefig(
-                f"{args.dir}/H{nucleus}_{titration_percs[i+1]}.{args.plot_format}",
+                f"{args.dir}/{nucleus_pair[0]}{nucleus_pair[1]}_{titration_percs[i+1]}.{args.plot_format}",
                 metadata={"Title": full_log},  # Title should work across all 3 formats
             )
             
         bigfig.savefig(
-            f"{args.dir}/H{nucleus}.{args.plot_format}",
+            f"{args.dir}/{nucleus_pair[0]}{nucleus_pair[1]}.{args.plot_format}",
             metadata={"Title": full_log},
         )
 
