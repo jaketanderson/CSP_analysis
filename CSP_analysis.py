@@ -12,9 +12,10 @@ import pandas as pd
 
 import utils
 
-# Use this dictionary to overwrite the alphas from the shift database with custom values.
+# Use this dictionary to overwrite the alphas with custom values instead of values derived
+# from ratios of standard deviations according to the BMRB shift database.
 CUSTOM_ALPHAS = {
-    #"GLYHA3": 4.3333,
+    # "GLYHA3": 4.3333,
 }
 
 shift_db = pd.read_csv("shift_database.csv", sep=",")
@@ -163,12 +164,13 @@ def main():
     ), "The number of peaks per file is different. Each file must have the same number of peaks after bad-residue exclusion."
 
     alphas = {}
-    # Use the lowest stdev from all residue/nucleus combos as the reference
-    reference = min(shift_db["std"])
+    # Use the avg stdev from all hydrogens (excluding ones with <10 BMRB entries) as the reference stdev
+    reference = shift_db[(shift_db["count"] > 10) & (shift_db["atom_id"].str.startswith("H"))]["std"].mean()
     # Populate alphas as ratios of stdev to reference
     for row in shift_db.itertuples():
         key = row.comp_id + row.atom_id
-        alphas[key] = row.std / reference
+        alphas[key] = float(row.std / reference)
+    alphas |= CUSTOM_ALPHAS
 
     for peaklist, peakfile in list(zip(peaklists, peakfiles)):
         # We are comparing this peaklist to the first peaklist, which has the lowest titration value
