@@ -2,8 +2,6 @@ import argparse
 import logging
 import sys
 
-import colorlog
-
 
 AA = {
     "A": "ALA", "R": "ARG", "N": "ASN", "D": "ASP",
@@ -13,23 +11,35 @@ AA = {
     "T": "THR", "W": "TRP", "Y": "TYR", "V": "VAL",
 }
 
+try:
+    import colorlog
+    use_color = True
+except:
+    use_color = False
+
 def setup_logging(no_log: bool, log: str):
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
     formatter = logging.Formatter("%(asctime)s- %(levelname)s - %(message)s")
 
-    stdout_handler = colorlog.StreamHandler(sys.stdout)
-    stdout_handler.setFormatter(
-        colorlog.ColoredFormatter(
-            "%(log_color)s%(levelname)s%(reset)s - %(message)s",
-            log_colors={
-                "DEBUG": "cyan",
-                "INFO": "green",
-                "WARNING": "orange",
-                "ERROR": "red",
-            },
+    if use_color:
+        stdout_handler = colorlog.StreamHandler(sys.stdout)
+        stdout_handler.setFormatter(
+            colorlog.ColoredFormatter(
+                "%(log_color)s%(levelname)s%(reset)s - %(message)s",
+                log_colors={
+                    "DEBUG": "cyan",
+                    "INFO": "green",
+                    "WARNING": "orange",
+                    "ERROR": "red",
+                },
+            )
         )
-    )
+    else:
+        stdout_handler = logging.StreamHandler(sys.stdout)
+        stdout_handler.setFormatter(
+            logging.Formatter("%(levelname)s - %(message)s")
+        )
 
     logger.addHandler(stdout_handler)
 

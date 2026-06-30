@@ -5,7 +5,6 @@ import pprint
 import sys
 from datetime import datetime
 
-import colorlog
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
